@@ -13,6 +13,25 @@ Validates AI output before posting to Slack — never post garbage.
 
 ---
 
+## Inline flow comment for `app/workers/processor.py`
+
+Paste this block comment at the top of `process_github_event`:
+
+```python
+# Worker pipeline:
+#   process_github_event(event_type, payload)
+#     │
+#     ├─ _summarize_event()
+#     │     ├─ anthropic.messages.create()   timeout=30s
+#     │     ├─ len(summary) < 10 → ValueError → retry → DLQ after 3 failures
+#     │     └─ logger.info("claude_summary_generated")
+#     └─ post_to_slack(message)
+#           ├─ 200 → done
+#           └─ non-200 → RuntimeError → retry → DLQ
+```
+
+---
+
 ## Update `app/workers/processor.py`
 
 ```python

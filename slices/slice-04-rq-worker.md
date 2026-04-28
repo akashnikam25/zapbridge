@@ -31,6 +31,23 @@ def process_github_event(event_type: str, payload: dict) -> None:
 
 ---
 
+## Inline flow comment for `app/webhooks/receiver.py`
+
+Paste this block comment at the top of the function body in the final file:
+
+```python
+# Pipeline:
+#   POST /webhook
+#     │
+#     ├─ validate_signature()  → 401 if invalid
+#     ├─ is_duplicate()        → {"status":"already_processed"} if seen
+#     └─ queue.enqueue()       → {"status":"queued"} ← HTTP 200 returned here
+#                                 ↓ async boundary
+#                              RQ worker: _summarize_event() → post_to_slack()
+```
+
+---
+
 ## Update `app/main.py`
 
 ```python

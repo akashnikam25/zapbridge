@@ -58,6 +58,30 @@ def decrypt(encrypted: str) -> str:
 
 ---
 
+## Inline flow comment for `app/auth/oauth.py`
+
+Paste this block comment at the top of the module (after imports):
+
+```python
+# OAuth state machine:
+#   GET /auth/login
+#     └─ uuid state → SET oauth_state:{uuid} 1 EX 600 → redirect to GitHub
+#
+#   GET /auth/callback?code=...&state={uuid}
+#     ├─ GETDEL oauth_state:{uuid}
+#     │     └─ nil → 400 CSRF rejected
+#     ├─ POST github.com/login/oauth/access_token → access_token
+#     ├─ encrypt(access_token) via Fernet
+#     └─ UPSERT users → {"status": "connected"}
+#
+#   DELETE /auth/disconnect
+#     ├─ decrypt(access_token_enc)
+#     ├─ DELETE github.com/applications/{id}/token  (revoke)
+#     └─ DELETE users row
+```
+
+---
+
 ## `app/auth/oauth.py`
 
 ```python
@@ -131,7 +155,14 @@ def handle_callback(code: str, state: str) -> dict:
             access_token_enc=encrypt(access_token),
         ).on_conflict_do_update(
             index_elements=["github_id"],
-            set_={"access_token_enc": encrypt(access_token), "github_login": github_user["login"]},
+            set_={
+                "access_token_enc": encrypt(access_token),
+                "github_login": github_user["login"],
+                # Clear provider-specific fields on reconnect so stale values don't linger.
+                # GitHub never sets these, but a future provider swap would leave garbage here.
+                "refresh_token_enc": None,
+                "token_expires_at": None,
+            },
         )
         db.execute(stmt)
         db.commit()
@@ -172,8 +203,13 @@ def get_or_refresh_token(user: User, db) -> str:
     if user.token_expires_at is None:
         return decrypt(user.access_token_enc)
 
-    from datetime import datetime, timedelta
-    if user.token_expires_at - datetime.utcnow() > timedelta(minutes=5):
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    # token_expires_at must be stored as timezone-aware; make it aware if it isn't (migration safety)
+    expires_at = user.token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at - now > timedelta(minutes=5):
         return decrypt(user.access_token_enc)
 
     # Token within 5 minutes of expiry — refresh it
