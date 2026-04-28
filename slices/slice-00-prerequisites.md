@@ -55,8 +55,8 @@ Copy the output — this is your `FERNET_KEY`.
 
 ```env
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-DATABASE_URL=postgresql://localhost/zapbridge
-REDIS_URL=redis://localhost:6379
+DATABASE_URL=postgresql://zapbridge:zapbridge@localhost:5433/zapbridge
+REDIS_URL=redis://localhost:6380
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 FERNET_KEY=...
@@ -69,9 +69,10 @@ GITHUB_WEBHOOK_SECRET=...
 ## Start infrastructure
 
 ```bash
-docker compose up -d   # or: brew services start redis postgresql
-createdb zapbridge     # create the Postgres database
+docker compose up -d
 ```
+
+> Postgres listens on host port **5433**, Redis on **6380** — chosen to avoid colliding with other local stacks already using 5432/6379. The `zapbridge` database is created automatically by the container.
 
 ---
 
