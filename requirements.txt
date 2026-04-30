@@ -6,3 +6,5 @@ rq
 sqlalchemy
 psycopg2-binary
 httpx
+anthropic
+structlog
