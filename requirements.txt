@@ -9,3 +9,6 @@ httpx
 anthropic
 structlog
 cryptography
+pytest
+pytest-asyncio
+fakeredis
