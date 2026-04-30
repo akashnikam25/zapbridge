@@ -2,11 +2,13 @@ import json
 from fastapi import FastAPI, HTTPException, Request
 from rq import Retry
 from app.config import settings
-from app.connections import queue
+from app.connections import queue, SessionLocal
 from app.webhooks.validator import validate_signature
 from app.webhooks.receiver import is_duplicate
 from app.workers.processor import process_github_event
-from app.auth.oauth import login_redirect, handle_callback, disconnect
+from app.auth.oauth import login_redirect, handle_callback, disconnect, get_or_refresh_token
+from app.github import fetch_all_issues
+from app.models import User
 
 app = FastAPI()
 
@@ -50,3 +52,18 @@ async def receive_webhook(request: Request):
         failure_ttl=86400,  # keep failed jobs 24h for inspection, then auto-clean
     )
     return {"status": "queued", "job_id": job.id}
+
+
+@app.get("/issues")
+def list_issues(repo: str, github_login: str):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter_by(github_login=github_login).first()
+        if not user:
+            raise HTTPException(404, "User not connected — visit /auth/login first")
+        token = get_or_refresh_token(user, db)
+    finally:
+        db.close()
+
+    issues = fetch_all_issues(token, repo)
+    return {"repo": repo, "count": len(issues), "issues": issues}
