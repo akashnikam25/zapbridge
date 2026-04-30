@@ -6,8 +6,24 @@ from app.connections import queue
 from app.webhooks.validator import validate_signature
 from app.webhooks.receiver import is_duplicate
 from app.workers.processor import process_github_event
+from app.auth.oauth import login_redirect, handle_callback, disconnect
 
 app = FastAPI()
+
+
+@app.get("/auth/login")
+def auth_login():
+    return login_redirect()
+
+
+@app.get("/auth/callback")
+def auth_callback(code: str, state: str):
+    return handle_callback(code, state)
+
+
+@app.delete("/auth/disconnect")
+def auth_disconnect(github_login: str):
+    return disconnect(github_login)
 
 
 @app.post("/webhook")
