@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from app.config import settings
 from app.slack import post_to_slack
 from app.webhooks.validator import validate_signature
+from app.webhooks.receiver import is_duplicate
 
 app = FastAPI()
 
@@ -29,6 +30,10 @@ async def receive_webhook(request: Request):
 
     if not validate_signature(body, sig, settings.GITHUB_WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Invalid signature")
+
+    delivery_id = request.headers.get("X-GitHub-Delivery", "")
+    if is_duplicate(delivery_id):
+        return {"status": "already_processed"}
 
     payload = await request.json()
     event_type = request.headers.get("X-GitHub-Event", "unknown")
