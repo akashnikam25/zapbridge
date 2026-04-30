@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from app.config import settings
 from app.slack import post_to_slack
+from app.webhooks.validator import validate_signature
 
 app = FastAPI()
 
@@ -22,6 +24,12 @@ def _extract_url(event_type: str, payload: dict) -> str | None:
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("X-Hub-Signature-256", "")
+
+    if not validate_signature(body, sig, settings.GITHUB_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
     payload = await request.json()
     event_type = request.headers.get("X-GitHub-Event", "unknown")
     action = payload.get("action", "")
