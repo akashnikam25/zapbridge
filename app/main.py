@@ -1,26 +1,13 @@
+import json
 from fastapi import FastAPI, HTTPException, Request
+from rq import Retry
 from app.config import settings
-from app.slack import post_to_slack
+from app.connections import queue
 from app.webhooks.validator import validate_signature
 from app.webhooks.receiver import is_duplicate
+from app.workers.processor import process_github_event
 
 app = FastAPI()
-
-
-def _extract_url(event_type: str, payload: dict) -> str | None:
-    """Pick the most relevant html_url for the event so Slack can link to it."""
-    if event_type == "pull_request":
-        return payload.get("pull_request", {}).get("html_url")
-    if event_type == "issues":
-        return payload.get("issue", {}).get("html_url")
-    if event_type == "issue_comment":
-        return payload.get("comment", {}).get("html_url")
-    if event_type == "push":
-        return payload.get("compare")
-    if event_type == "release":
-        return payload.get("release", {}).get("html_url")
-    # Fallback: repo URL is present on almost every event
-    return payload.get("repository", {}).get("html_url")
 
 
 @app.post("/webhook")
@@ -35,14 +22,15 @@ async def receive_webhook(request: Request):
     if is_duplicate(delivery_id):
         return {"status": "already_processed"}
 
-    payload = await request.json()
+    payload = json.loads(body)
     event_type = request.headers.get("X-GitHub-Event", "unknown")
-    action = payload.get("action", "")
-    url = _extract_url(event_type, payload)
 
-    label = f"GitHub event: {event_type} — {action}".rstrip(" —")
-    # Slack mrkdwn link syntax: <url|label>
-    message = f"<{url}|{label}>" if url else label
-
-    post_to_slack(message)
-    return {"status": "ok"}
+    job = queue.enqueue(
+        process_github_event,
+        event_type,
+        payload,
+        job_timeout=120,
+        retry=Retry(max=3, interval=[10, 30, 60]),  # backoff: 10s, 30s, 60s
+        failure_ttl=86400,  # keep failed jobs 24h for inspection, then auto-clean
+    )
+    return {"status": "queued", "job_id": job.id}
