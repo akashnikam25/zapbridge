@@ -1,6 +1,9 @@
+import structlog
 from app.connections import redis_conn
 
 IDEMPOTENCY_TTL = 86400  # 24 hours
+
+logger = structlog.get_logger()
 
 # Pipeline:
 #   POST /webhook
